@@ -4,6 +4,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import argparse
 import sys
 import os
+import datetime
+import time
 
 import ggplot as gg
 import pandas as pd
@@ -68,9 +70,15 @@ def dname(opts):
 def mutant_killscore(opts, mutants, equivalents, my_tests):
     mutant_kills = {}
     nmutants = int(opts['nmutants'])
-    cent = nmutants // 10
+    cent = nmutants // 100
+    #start = datetime.datetime.now()
+    start = time.monotonic()
     for j,m in enumerate(mutants + equivalents):
-        if j % cent == 0: print("%3.0f%%" % (j/nmutants * 100.0), end='', sep=' ', flush=True)
+        end = time.monotonic()
+        #end = datetime.datetime.now()
+        if j % cent == 0: print("%3.0f%% (%0.0f sec)" % (j/nmutants * 100.0, end-start), end='', sep=' ', flush=True)
+        #start = datetime.datetime.now()
+        #start = time.monotonic()
         mutant_kills[j] = sum(1 for t in my_tests if kills(t, m))
     print(" 100%")
     return mutant_kills
