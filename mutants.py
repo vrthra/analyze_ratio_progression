@@ -65,7 +65,7 @@ def plot(mydata, opts):
 
 def dname(opts):
   return "data/mutantlen={mutantlen}/nmutants={nmutants}/nequivalents={nequivalents}/nfaulty={nfaulty}".format(**opts) + \
-  "/ntests={ntests}/checks={nchecks}".format(**opts)
+  "/ntests={ntests}/nchecks={nchecks}".format(**opts)
 
 def mutant_killscore(opts, mutants, equivalents, my_tests):
     mutant_kills = {}
@@ -144,4 +144,4 @@ parser.add_argument('--nfaulty', type=int, default=100, help='the maximum number
 parser.add_argument('--ntests', type=int, default=1000, help='the number of tests to use')
 parser.add_argument('--nchecks', type=int, default=10, help='the maximum number of bits checked per test')
 args = parser.parse_args()
-main(args.nmutants, args.nequivalents, args.mutantlen, args.nfaulty, args.ntests)
+main(args.nmutants, args.nequivalents, args.mutantlen, args.nfaulty, args.ntests, args.nchecks)
