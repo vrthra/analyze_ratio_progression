@@ -3,20 +3,27 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import argparse
 import sys
-import os
 import datetime
 import time
 
-import ggplot as gg
-import pandas as pd
-
 import random
 random.seed(0)
+#from scipy.stats import norm
 
+M_UPTO = 1 # generate upto nfaulty bits per mutant
+M_EXACT = 2 # generate exactly nfaulty bits per mutant
+M_NUM_FAULTS = M_UPTO
+
+T_UPTO = 1 # generate upto nfaulty bits per test
+T_EXACT = 2 # generate exactly nfaulty bits per test
+T_NUM_FAULTS = T_UPTO
+
+def random_number(start, end):
+    return random.randrange(start, end)
 
 def genmutant(mutantlen, nfaulty):
     """Generate a mutant mutantlen long with nfaulty faulty bits"""
-    faulty_bits = random.randrange(1, nfaulty+1)
+    faulty_bits = nfaulty if M_NUM_FAULTS == M_EXACT else random_number(1, nfaulty+1)
     m = 0
     for i in range(0, faulty_bits):
         pos = random.randrange(0, mutantlen)
@@ -27,10 +34,9 @@ def genmutant(mutantlen, nfaulty):
 
 def gentest(mutantlen, nchecks):
     """Generate a test that checks n faulty bits"""
-
     # This is exactly same as genmutant, but rewritten here just in
     # case we want to change the distribution.
-    faulty_bits = random.randrange(1, nchecks+1)
+    faulty_bits = nchecks if T_NUM_FAULTS == T_EXACT else random_number(1, nchecks+1)
     m = 0
     for i in range(0, faulty_bits):
         pos = random.randrange(0, mutantlen)
@@ -41,87 +47,41 @@ def gentest(mutantlen, nchecks):
 
 def gen_mutants(nmutants, mutantlen, nfaulty):
     """ Generate n mutants """
-    lst = []
-    for i in range(0, nmutants):
-        lst.append(genmutant(mutantlen, nfaulty))
-    return lst
+    return [genmutant(mutantlen, nfaulty) for i in range(0, nmutants)]
 
 def gen_tests(ntests, mutantlen, nchecks):
-    testline = []
-    for i in range(0, ntests):
-        testline.append(gentest(mutantlen, nchecks))
-    return testline
-
+    """ Generate n tests """
+    return [gentest(mutantlen, nchecks) for i in range(0, ntests)]
 
 def kills(test, mutant):
     # A test kills a mutant if any of the bits match.
     return mutant & test
 
-def plot(mydata, opts):
-    p = gg.ggplot(gg.aes(x=opts['x'], y=opts['y']), data=mydata) + gg.geom_line() +\
-       gg.xlab(opts['x']) + gg.ylab(opts['y']) + gg.ggtitle(opts['title'])
-
-    p.save(opts['file'])
-
-def dname(opts):
-  return "data/mutantlen={mutantlen}/nmutants={nmutants}/nequivalents={nequivalents}/nfaulty={nfaulty}".format(**opts) + \
-  "/ntests={ntests}/nchecks={nchecks}".format(**opts)
+def mutant_killmatrix(opts, mutants, equivalents, my_tests):
+    mutant_kills = []
+    nmutants = int(opts['nmutants'])
+    start = time.monotonic()
+    for j,m in enumerate(mutants + equivalents):
+        end = time.monotonic()
+        mutant_kills.append(['1' if kills(t,m) else '0' for t in my_tests])
+    return mutant_kills
 
 def mutant_killscore(opts, mutants, equivalents, my_tests):
     mutant_kills = {}
     nmutants = int(opts['nmutants'])
     cent = nmutants // 100
-    #start = datetime.datetime.now()
     start = time.monotonic()
     for j,m in enumerate(mutants + equivalents):
-        end = time.monotonic()
-        #end = datetime.datetime.now()
-        if j % cent == 0: print("%3.0f%% (%0.0f sec)" % (j/nmutants * 100.0, end-start), end='', sep=' ', flush=True)
-        #start = datetime.datetime.now()
-        #start = time.monotonic()
         mutant_kills[j] = sum(1 for t in my_tests if kills(t, m))
-    print(" 100%")
     return mutant_kills
 
-def do_statistics(opts, mutant_kills):
-    atleast_ntests = {}
-    ntests = []
-    with open(dname(opts) + '/atleast.csv', 'w+') as f:
-        print('ntests, atleast, atmost, exactly',file=f)
-        for i in range(0, 11):
-            k = sum(1 for mi, killed in mutant_kills.items() if killed >= i)
-            s = sum(1 for mi, killed in mutant_kills.items() if killed <= i)
-            e = sum(1 for mi, killed in mutant_kills.items() if killed == i)
-            atleast_ntests[i] = k
-            ntests.append({'ntests':i, 'atleast':k, 'atmost':s, 'exactly':e})
-            print("%d, %d, %d, %d" % (i, k, s, e), file=f)
-
-    imax = max(i for i, k in atleast_ntests.items())
-
-    mu_ratio = {}
-    for i in range(2, imax + 1):
-        if atleast_ntests[i] == 0: break
-        mu_ratio[i - 1] = atleast_ntests[i] / atleast_ntests[i-1]
-
-    with open(dname(opts) + '/ratios.csv', 'w+') as f:
-        print('index, ratio',file=f)
-        for i in sorted(mu_ratio.keys()):
-            print("%f, %f" % (i, mu_ratio[i]), file=f)
-            print(i, mu_ratio[i])
-    print('plotting', file=sys.stderr)
-    data = pd.DataFrame(ntests)
-    print(data)
-    plot(data, {'x':'ntests', 'y':'atleast', 'title':str(opts), 'file':dname(opts) + '/plot.png'})
-    print('done', file=sys.stderr)
-
-def main(nmutants=1000, nequivalents=1000, mutantlen=100, nfaulty=100, ntests=1000, nchecks=10):
+def main(nmutants=1000, nequivalents=0, mutantlen=100, nfaulty=100, ntests=1000, nchecks=10):
     opts = {'nmutants':nmutants,
        'mutantlen':mutantlen,
        'nfaulty':nfaulty,
        'ntests':ntests,
        'nchecks':nchecks,
        'nequivalents':nequivalents}
-    os.makedirs(dname(opts), exist_ok=True)
     # first generate our tests
     my_tests = gen_tests(ntests=ntests, mutantlen=mutantlen, nchecks=nchecks)
 
@@ -132,9 +92,12 @@ def main(nmutants=1000, nequivalents=1000, mutantlen=100, nfaulty=100, ntests=10
     opts['nequivalents'] = len(equivalents)
 
     # how many tests killed this mutant?
+    mutant_kill_matrix = mutant_killmatrix(opts, mutants, equivalents, my_tests)
     mutant_kills = mutant_killscore(opts, mutants, equivalents, my_tests)
-
-    do_statistics(opts, mutant_kills)
+    for i,mutant in enumerate(mutant_kill_matrix):
+        print(i+1,','.join(mutant), sep='')
+    score = len([i for i in mutant_kills if mutant_kills[i] > 0])/len(mutant_kills)
+    print("score=%f" % score, file=sys.stderr)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--nmutants', type=int, default=1000, help='the number of mutants')
